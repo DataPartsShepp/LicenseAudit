@@ -85,53 +85,112 @@ For automated or unattended runs, use an Azure AD application with client creden
   -AppTenantId "<app-tenant-id>"
 ```
 
-#### Option 2: Configuration File (Recommended)
+#### Option 2: Single App Configuration File
 
-Create an `app-credentials.json` file in the script directory:
+Create an `app-credentials.json` file with a single app (simple setup):
 
 ```json
 {
-  "ClientId": "12345678-1234-1234-1234-123456789abc",
-  "ClientSecret": "abc~defghijklmnopqrstuvwxyz",
-  "AppTenantId": "abcdef12-3456-7890-abcd-ef1234567890"
+  "default": {
+    "ClientId": "12345678-1234-1234-1234-123456789abc",
+    "ClientSecret": "abc~defghijklmnopqrstuvwxyz",
+    "AppTenantId": "abcdef12-3456-7890-abcd-ef1234567890"
+  }
 }
 ```
 
-Then run the script without specifying credentials:
+Then run the script:
 
 ```powershell
 .\LicenseAudit.ps1 -Tenant "contoso.onmicrosoft.com"
 ```
 
-The script will automatically load credentials from `app-credentials.json`. 
+#### Option 3: Multiple Apps Configuration File (Recommended)
 
-**Tip:** A template file `app-credentials.json.example` is provided. Copy it to `app-credentials.json` and fill in your values.
+For multi-tenant audits with different apps per tenant, create an `app-credentials.json` file:
 
-**Security:** The actual `app-credentials.json` file is excluded from version control (see `.gitignore`). Keep your credentials secure and never commit them to the repository.
+```json
+{
+  "default": {
+    "ClientId": "default-app-id",
+    "ClientSecret": "default-secret",
+    "AppTenantId": "default-tenant-id"
+  },
+  "apps": {
+    "app1": {
+      "ClientId": "app1-client-id",
+      "ClientSecret": "app1-secret",
+      "AppTenantId": "app1-tenant-id"
+    },
+    "app2": {
+      "ClientId": "app2-client-id",
+      "ClientSecret": "app2-secret",
+      "AppTenantId": "app2-tenant-id"
+    }
+  },
+  "tenantMappings": {
+    "contoso.onmicrosoft.com": "app1",
+    "fabrikam.onmicrosoft.com": "app2"
+  }
+}
+```
 
-**Parameters:**
-- `ClientId`: The Application (Client) ID of your Azure AD app
-- `ClientSecret`: The client secret value
-- `AppTenantId`: The Tenant ID where the app is registered (typically your home tenant)
-- `CredentialFile`: (Optional) Path to custom credential file (default: `.\app-credentials.json`)
+**How it works:**
+- `default`: Used if no mapping or app is specified
+- `apps`: Named app credential sets
+- `tenantMappings`: Maps tenant domains to app names (automatic app selection)
 
-#### Example (Multi-Tenant with Config File)
+**Run with automatic app selection:**
 
 ```powershell
 .\LicenseAudit.ps1 -File ".\tenants.csv"
 ```
 
-Uses credentials from `app-credentials.json` and processes all tenants in the CSV.
+The script automatically selects the correct app for each tenant based on `tenantMappings`.
 
-#### Command-Line Override
+#### Option 4: Specify App via CSV Column
 
-Command-line parameters override the config file:
+For even more flexibility, add an `AppName` column to your CSV:
+
+```csv
+Company,Tenant,AppName
+Contoso,contoso.onmicrosoft.com,app1
+Fabrikam,fabrikam.onmicrosoft.com,app2
+```
+
+Run the script:
 
 ```powershell
+.\LicenseAudit.ps1 -File ".\tenants.csv"
+```
+
+The script uses the `AppName` from each row if provided, otherwise falls back to `tenantMappings`.
+
+#### Option 5: Override via Command-Line
+
+Command-line parameters override everything:
+
+```powershell
+# Use specific app from config
+.\LicenseAudit.ps1 -Tenant "contoso.onmicrosoft.com" -AppName "app1"
+
+# Use command-line credentials (highest priority)
 .\LicenseAudit.ps1 `
   -Tenant "contoso.onmicrosoft.com" `
-  -ClientId "override-id"  # This will use override-id instead of the one from config file
+  -ClientId "override-id" `
+  -ClientSecret "override-secret" `
+  -AppTenantId "override-tenant-id"
 ```
+
+**Credential Resolution Order:**
+1. Command-line parameters (`-ClientId`, `-ClientSecret`, `-AppTenantId`)
+2. CSV `AppName` column (if processing multiple tenants from file)
+3. Command-line `-AppName` parameter
+4. `tenantMappings` lookup
+5. `default` credentials from config file
+6. Fall back to device authentication
+
+**Security:** The actual `app-credentials.json` file is excluded from version control (see `.gitignore`). Keep your credentials secure and never commit them to the repository.
 
 ## Configuration
 

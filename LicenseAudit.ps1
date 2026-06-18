@@ -5,31 +5,81 @@ param (
     [string]$ClientId,
     [string]$ClientSecret,
     [string]$AppTenantId,
-    [string]$CredentialFile = ".\app-credentials.json"
+    [string]$CredentialFile = ".\app-credentials.json",
+    [string]$AppName
 )
 
 # Load app credentials from JSON file if it exists and parameters not provided
 $configPath = Join-Path $PSScriptRoot $CredentialFile
+$appConfig = @{}
+
 if (Test-Path $configPath) {
     try {
         $config = Get-Content $configPath | ConvertFrom-Json
-        
-        # Use config values if command-line parameters not provided
-        if (-not $ClientId -and $config.ClientId) {
-            $ClientId = $config.ClientId
-        }
-        if (-not $ClientSecret -and $config.ClientSecret) {
-            $ClientSecret = $config.ClientSecret
-        }
-        if (-not $AppTenantId -and $config.AppTenantId) {
-            $AppTenantId = $config.AppTenantId
-        }
-        
+        $appConfig = $config
         Write-Host "Loaded app credentials from $configPath" -ForegroundColor Cyan
     }
     catch {
         Write-Warning "Could not load credentials from $configPath: $_"
     }
+}
+
+# Helper function to resolve credentials for a tenant
+function Get-AppCredentials {
+    param(
+        [string]$TenantId,
+        [string]$AppName,
+        [string]$ClientId,
+        [string]$ClientSecret,
+        [string]$AppTenantId,
+        [object]$AppConfig
+    )
+    
+    $creds = @{
+        ClientId = $ClientId
+        ClientSecret = $ClientSecret
+        AppTenantId = $AppTenantId
+    }
+    
+    # If command-line parameters are provided, use them
+    if ($ClientId -and $ClientSecret -and $AppTenantId) {
+        return $creds
+    }
+    
+    # If AppName is specified, use that app
+    if ($AppName -and $AppConfig.apps -and $AppConfig.apps.$AppName) {
+        $appCreds = $AppConfig.apps.$AppName
+        return @{
+            ClientId = $appCreds.ClientId
+            ClientSecret = $appCreds.ClientSecret
+            AppTenantId = $appCreds.AppTenantId
+        }
+    }
+    
+    # Check if there's a mapping for this tenant
+    if ($AppConfig.tenantMappings -and $AppConfig.tenantMappings.$TenantId) {
+        $mappedAppName = $AppConfig.tenantMappings.$TenantId
+        if ($AppConfig.apps -and $AppConfig.apps.$mappedAppName) {
+            $appCreds = $AppConfig.apps.$mappedAppName
+            return @{
+                ClientId = $appCreds.ClientId
+                ClientSecret = $appCreds.ClientSecret
+                AppTenantId = $appCreds.AppTenantId
+            }
+        }
+    }
+    
+    # Fall back to default credentials
+    if ($AppConfig.default) {
+        return @{
+            ClientId = $AppConfig.default.ClientId
+            ClientSecret = $AppConfig.default.ClientSecret
+            AppTenantId = $AppConfig.default.AppTenantId
+        }
+    }
+    
+    # Return empty if no credentials found
+    return $creds
 }
 
 # Ensure required modules are installed
@@ -121,18 +171,24 @@ $env:AZURE_IDENTITY_DISABLE_WAM = "true"
 function Connect-ToTenant {
     param(
         [string]$TenantId,
+        [string]$AppName,
         [string]$ClientId,
         [string]$ClientSecret,
-        [string]$AppTenantId
+        [string]$AppTenantId,
+        [object]$AppConfig
     )
     
-    # Try app credentials first if provided
-    if ($ClientId -and $ClientSecret -and $AppTenantId) {
+    # Resolve which credentials to use
+    $creds = Get-AppCredentials -TenantId $TenantId -AppName $AppName -ClientId $ClientId `
+        -ClientSecret $ClientSecret -AppTenantId $AppTenantId -AppConfig $AppConfig
+    
+    # Try app credentials first if available
+    if ($creds.ClientId -and $creds.ClientSecret -and $creds.AppTenantId) {
         try {
             Write-Host "Attempting to connect using app credentials..."
             $credential = New-Object System.Management.Automation.PSCredential(
-                $ClientId,
-                (ConvertTo-SecureString -String $ClientSecret -AsPlainText -Force)
+                $creds.ClientId,
+                (ConvertTo-SecureString -String $creds.ClientSecret -AsPlainText -Force)
             )
             
             Connect-MgGraph `
@@ -173,14 +229,17 @@ foreach ($entry in $tenantList) {
 
     $company = $entry.Company
     $tenant = $entry.Tenant
+    $entryAppName = $entry.AppName  # Optional column in CSV
 
     Write-Host "`nConnecting to $company ($tenant)..."
 
     # Clean previous session
     Disconnect-MgGraph -ErrorAction SilentlyContinue
 
-    # Connect with fallback logic
-    $connectResult = Connect-ToTenant -TenantId $tenant -ClientId $ClientId -ClientSecret $ClientSecret -AppTenantId $AppTenantId
+    # Connect with fallback logic - use AppName from CSV if available, otherwise use script parameter
+    $selectedAppName = if ($entryAppName) { $entryAppName } else { $AppName }
+    $connectResult = Connect-ToTenant -TenantId $tenant -AppName $selectedAppName -ClientId $ClientId `
+        -ClientSecret $ClientSecret -AppTenantId $AppTenantId -AppConfig $appConfig
     
     if (-not $connectResult) {
         Write-Error "Failed to authenticate for $tenant"
