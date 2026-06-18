@@ -17,3 +17,8 @@ Thumbs.db
 # App credentials (keep the .example file in repo)
 app-credentials.json
 !app-credentials.json.example
+
+# Tenant configurations (keep the .example file in repo)
+tenants.csv
+!tenants.csv.example
+!exclude.txt.example

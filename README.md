@@ -48,13 +48,16 @@ Provide a CSV file containing a list of tenants to process.
 ```
 
 **CSV Format for `-File`:**
-The CSV must have headers `Company` and `Tenant`.
+The CSV must have headers `Company` and `Tenant`. Optionally, add an `AppName` column to specify which app credential to use per tenant.
 
 ```csv
-Company,Tenant
-Contoso,contoso.onmicrosoft.com
-Fabrikam,fabrikam.onmicrosoft.com
+Company,Tenant,AppName
+Contoso,contoso.onmicrosoft.com,app1
+Fabrikam,fabrikam.onmicrosoft.com,app2
+Adventure Works,adventureworks.onmicrosoft.com,
 ```
+
+**Tip:** A template file `tenants.csv.example` is provided. Copy it to `tenants.csv` and customize it with your tenant information.
 
 ## Authentication Methods
 
@@ -196,6 +199,15 @@ Command-line parameters override everything:
 
 ### Exclusions (`exclude.txt`)
 To exclude specific users (e.g., admin accounts or test users) from the audit, add their **UserPrincipalName** (email) to a file named `exclude.txt` located in the same folder as the script.
+
+Example `exclude.txt`:
+```
+admin@contoso.onmicrosoft.com
+serviceprincipal@contoso.onmicrosoft.com
+test.user@contoso.onmicrosoft.com
+```
+
+**Tip:** A template file `exclude.txt.example` is provided. Copy it to `exclude.txt` and customize it with your excluded users.
 
 ### License Exclusions (`licenseExclude.txt`)
 To exclude specific license products (e.g., free trials or zero-cost licenses) from the report, add the exact **Product Name** to a file named `licenseExclude.txt` located in the same folder as the script.

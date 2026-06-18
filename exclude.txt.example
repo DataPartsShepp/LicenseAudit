@@ -1,0 +1,7 @@
+# Service accounts and test users to exclude from the license audit
+# Add one UserPrincipalName (email address) per line
+
+admin@contoso.onmicrosoft.com
+serviceprincipal@contoso.onmicrosoft.com
+test.user@contoso.onmicrosoft.com
+automation@contoso.onmicrosoft.com
