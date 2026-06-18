@@ -1,0 +1,15 @@
+# Tenant data files
+AWERESTenants.csv
+VPTenants.csv
+exclude.txt
+route print.txt
+
+# Excel files with sensitive data
+*.xlsx
+
+# PowerShell history
+*_history.ps1
+
+# Local configuration
+.DS_Store
+Thumbs.db
