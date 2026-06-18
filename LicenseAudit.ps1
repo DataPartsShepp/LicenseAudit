@@ -1,8 +1,36 @@
 param (
     [string]$Tenant,
     [string]$File,
-    [string]$OutputFile = ".\TenantLicenseAudit.xlsx"
+    [string]$OutputFile = ".\TenantLicenseAudit.xlsx",
+    [string]$ClientId,
+    [string]$ClientSecret,
+    [string]$AppTenantId,
+    [string]$CredentialFile = ".\app-credentials.json"
 )
+
+# Load app credentials from JSON file if it exists and parameters not provided
+$configPath = Join-Path $PSScriptRoot $CredentialFile
+if (Test-Path $configPath) {
+    try {
+        $config = Get-Content $configPath | ConvertFrom-Json
+        
+        # Use config values if command-line parameters not provided
+        if (-not $ClientId -and $config.ClientId) {
+            $ClientId = $config.ClientId
+        }
+        if (-not $ClientSecret -and $config.ClientSecret) {
+            $ClientSecret = $config.ClientSecret
+        }
+        if (-not $AppTenantId -and $config.AppTenantId) {
+            $AppTenantId = $config.AppTenantId
+        }
+        
+        Write-Host "Loaded app credentials from $configPath" -ForegroundColor Cyan
+    }
+    catch {
+        Write-Warning "Could not load credentials from $configPath: $_"
+    }
+}
 
 # Ensure required modules are installed
 $requiredModules = @('ImportExcel', 'Microsoft.Graph')
@@ -89,6 +117,58 @@ if (Test-Path $OutputFile) {
 # Fix auth instability
 $env:AZURE_IDENTITY_DISABLE_WAM = "true"
 
+# Helper function to authenticate with fallback
+function Connect-ToTenant {
+    param(
+        [string]$TenantId,
+        [string]$ClientId,
+        [string]$ClientSecret,
+        [string]$AppTenantId
+    )
+    
+    # Try app credentials first if provided
+    if ($ClientId -and $ClientSecret -and $AppTenantId) {
+        try {
+            Write-Host "Attempting to connect using app credentials..."
+            $credential = New-Object System.Management.Automation.PSCredential(
+                $ClientId,
+                (ConvertTo-SecureString -String $ClientSecret -AsPlainText -Force)
+            )
+            
+            Connect-MgGraph `
+                -TenantId $TenantId `
+                -ClientSecretCredential $credential `
+                -Scopes "User.Read.All","Organization.Read.All" `
+                -ContextScope Process `
+                -NoWelcome
+            
+            Write-Host "Connected using app credentials." -ForegroundColor Green
+            return $true
+        }
+        catch {
+            Write-Warning "App credential authentication failed: $_"
+            Write-Host "Falling back to device authentication..."
+        }
+    }
+    
+    # Fall back to device authentication
+    try {
+        Connect-MgGraph `
+            -TenantId $TenantId `
+            -Scopes "User.Read.All","Organization.Read.All" `
+            -UseDeviceAuthentication `
+            -ContextScope Process `
+            -NoWelcome
+        
+        Write-Host "Connected using device authentication." -ForegroundColor Green
+        return $true
+    }
+    catch {
+        Write-Error "Device authentication failed: $_"
+        return $false
+    }
+}
+
 foreach ($entry in $tenantList) {
 
     $company = $entry.Company
@@ -99,24 +179,11 @@ foreach ($entry in $tenantList) {
     # Clean previous session
     Disconnect-MgGraph -ErrorAction SilentlyContinue
 
-    try {
-        Connect-MgGraph `
-            -TenantId $tenant `
-            -Scopes "User.Read.All","Organization.Read.All" `
-            -UseDeviceAuthentication `
-            -ContextScope Process `
-            -NoWelcome
-    }
-    catch {
-        Write-Error "Login failed for $tenant"
-        Write-Error $_
-        continue
-    }
-
-    # Validate connection
-    $context = Get-MgContext
-    if (-not $context -or -not $context.Account) {
-        Write-Warning "Authentication did not complete for $tenant"
+    # Connect with fallback logic
+    $connectResult = Connect-ToTenant -TenantId $tenant -ClientId $ClientId -ClientSecret $ClientSecret -AppTenantId $AppTenantId
+    
+    if (-not $connectResult) {
+        Write-Error "Failed to authenticate for $tenant"
         continue
     }
 

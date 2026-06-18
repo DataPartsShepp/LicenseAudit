@@ -56,6 +56,83 @@ Contoso,contoso.onmicrosoft.com
 Fabrikam,fabrikam.onmicrosoft.com
 ```
 
+## Authentication Methods
+
+### Device Authentication (Default)
+If no app credentials are provided, the script falls back to device authentication (interactive login).
+
+```powershell
+.\LicenseAudit.ps1 -Tenant "contoso.onmicrosoft.com"
+```
+
+You will be prompted to authenticate via a device code in your browser.
+
+### Application Authentication (App Keys)
+For automated or unattended runs, use an Azure AD application with client credentials. This method takes precedence if provided and falls back to device authentication if it fails.
+
+#### Prerequisites
+1. Create an Azure AD Application in your tenant
+2. Grant it `User.Read.All` and `Organization.Read.All` application permissions
+3. Create a client secret
+
+#### Option 1: Command-Line Parameters
+
+```powershell
+.\LicenseAudit.ps1 `
+  -Tenant "contoso.onmicrosoft.com" `
+  -ClientId "<app-client-id>" `
+  -ClientSecret "<app-client-secret>" `
+  -AppTenantId "<app-tenant-id>"
+```
+
+#### Option 2: Configuration File (Recommended)
+
+Create an `app-credentials.json` file in the script directory:
+
+```json
+{
+  "ClientId": "12345678-1234-1234-1234-123456789abc",
+  "ClientSecret": "abc~defghijklmnopqrstuvwxyz",
+  "AppTenantId": "abcdef12-3456-7890-abcd-ef1234567890"
+}
+```
+
+Then run the script without specifying credentials:
+
+```powershell
+.\LicenseAudit.ps1 -Tenant "contoso.onmicrosoft.com"
+```
+
+The script will automatically load credentials from `app-credentials.json`. 
+
+**Tip:** A template file `app-credentials.json.example` is provided. Copy it to `app-credentials.json` and fill in your values.
+
+**Security:** The actual `app-credentials.json` file is excluded from version control (see `.gitignore`). Keep your credentials secure and never commit them to the repository.
+
+**Parameters:**
+- `ClientId`: The Application (Client) ID of your Azure AD app
+- `ClientSecret`: The client secret value
+- `AppTenantId`: The Tenant ID where the app is registered (typically your home tenant)
+- `CredentialFile`: (Optional) Path to custom credential file (default: `.\app-credentials.json`)
+
+#### Example (Multi-Tenant with Config File)
+
+```powershell
+.\LicenseAudit.ps1 -File ".\tenants.csv"
+```
+
+Uses credentials from `app-credentials.json` and processes all tenants in the CSV.
+
+#### Command-Line Override
+
+Command-line parameters override the config file:
+
+```powershell
+.\LicenseAudit.ps1 `
+  -Tenant "contoso.onmicrosoft.com" `
+  -ClientId "override-id"  # This will use override-id instead of the one from config file
+```
+
 ## Configuration
 
 ### Exclusions (`exclude.txt`)

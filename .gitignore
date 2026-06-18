@@ -13,3 +13,7 @@ route print.txt
 # Local configuration
 .DS_Store
 Thumbs.db
+
+# App credentials (keep the .example file in repo)
+app-credentials.json
+!app-credentials.json.example
